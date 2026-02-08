@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Le Billet de Guillaume Meurice</title>
+    <description>Le billet d'humeur de Guillaume Meurice</description>
+    <link>https://www.radiofrance.fr/franceinter/podcasts/le-billet-de-guillaume-meurice</link>
+    <item>
+      <title>Épisode du 15 janvier 2025</title>
+      <description>Un épisode formidable</description>
+      <guid>ep-001</guid>
+      <link>https://www.radiofrance.fr/franceinter/podcasts/test/ep-001</link>
+      <pubDate>Wed, 15 Jan 2025 08:00:00 +0000</pubDate>
+      <enclosure url="https://media.radiofrance-podcast.net/podcast09/test-ep001.mp3" type="audio/mpeg" length="2880000"/>
+      <itunes:duration>03:00</itunes:duration>
+      <itunes:image href="https://cdn.radiofrance.fr/s3/cruiser-production/2025/01/ep001.jpg"/>
+    </item>
+    <item>
+      <title>Épisode du 14 janvier 2025</title>
+      <description>Un autre épisode</description>
+      <guid>ep-002</guid>
+      <link>https://www.radiofrance.fr/franceinter/podcasts/test/ep-002</link>
+      <pubDate>Tue, 14 Jan 2025 08:00:00 +0000</pubDate>
+      <enclosure url="https://media.radiofrance-podcast.net/podcast09/test-ep002.mp3" type="audio/mpeg" length="3120000"/>
+      <itunes:duration>195</itunes:duration>
+    </item>
+  </channel>
+</rss>

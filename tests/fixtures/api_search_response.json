@@ -1,0 +1,57 @@
+{
+  "data": [
+    {
+      "id": "1234",
+      "type": "shows",
+      "attributes": {
+        "title": "Le Billet de Guillaume Meurice",
+        "description": "Le billet d'humeur de Guillaume Meurice dans Par Jupiter",
+        "path": "/franceinter/podcasts/le-billet-de-guillaume-meurice",
+        "visual": {
+          "src": "https://cdn.radiofrance.fr/s3/cruiser-production/2023/01/meurice.jpg"
+        }
+      },
+      "relationships": {
+        "station": {
+          "data": {
+            "id": "1",
+            "type": "stations"
+          }
+        }
+      }
+    },
+    {
+      "id": "5678",
+      "type": "shows",
+      "attributes": {
+        "title": "La Terre au carré",
+        "description": "L'émission environnement de France Inter",
+        "path": "/franceinter/podcasts/la-terre-au-carre",
+        "visual": {
+          "src": "https://cdn.radiofrance.fr/s3/cruiser-production/2023/01/terre.jpg"
+        }
+      },
+      "relationships": {
+        "station": {
+          "data": {
+            "id": "1",
+            "type": "stations"
+          }
+        }
+      }
+    }
+  ],
+  "included": [
+    {
+      "id": "1",
+      "type": "stations",
+      "attributes": {
+        "title": "France Inter",
+        "baseline": "InterVenez"
+      }
+    }
+  ],
+  "meta": {
+    "total": 2
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "data": [
+    {
+      "id": "diff-001",
+      "type": "diffusions",
+      "attributes": {
+        "title": "Épisode du 15 janvier 2025",
+        "standFirst": "Un épisode formidable",
+        "publishedDate": 1736928000,
+        "path": "/franceinter/podcasts/test/episode-15-janvier"
+      },
+      "relationships": {
+        "show": {
+          "data": {
+            "id": "1234",
+            "type": "shows"
+          }
+        },
+        "manifestations": {
+          "data": [
+            {
+              "id": "manif-001",
+              "type": "manifestations"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "diff-002",
+      "type": "diffusions",
+      "attributes": {
+        "title": "Épisode du 14 janvier 2025",
+        "standFirst": "Un autre épisode",
+        "publishedDate": 1736841600,
+        "path": "/franceinter/podcasts/test/episode-14-janvier"
+      },
+      "relationships": {
+        "show": {
+          "data": {
+            "id": "1234",
+            "type": "shows"
+          }
+        },
+        "manifestations": {
+          "data": [
+            {
+              "id": "manif-002",
+              "type": "manifestations"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "included": [
+    {
+      "id": "1234",
+      "type": "shows",
+      "attributes": {
+        "title": "Le Billet de Guillaume Meurice",
+        "description": "Le billet d'humeur de Guillaume Meurice",
+        "path": "/franceinter/podcasts/le-billet-de-guillaume-meurice"
+      }
+    },
+    {
+      "id": "manif-001",
+      "type": "manifestations",
+      "attributes": {
+        "url": "https://media.radiofrance-podcast.net/podcast09/23285-15.01.2025-ITEMA_23984350-2025C38990E0005-21.mp3",
+        "duration": 180,
+        "created": 1736928000
+      }
+    },
+    {
+      "id": "manif-002",
+      "type": "manifestations",
+      "attributes": {
+        "url": "https://media.radiofrance-podcast.net/podcast09/23285-14.01.2025-ITEMA_23984100-2025C38990E0004-21.mp3",
+        "duration": 195,
+        "created": 1736841600
+      }
+    }
+  ],
+  "links": {
+    "next": "/shows/1234/diffusions?page[offset]=2"
+  },
+  "meta": {
+    "total": 50
+  }
+}
