@@ -41,7 +41,7 @@ radiofrance-dl list
 ### Search for shows
 
 ```bash
-radiofrance-dl search "meurice"
+radiofrance-dl search "tina"
 radiofrance-dl search "terre au carré"
 ```
 

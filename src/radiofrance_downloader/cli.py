@@ -238,6 +238,16 @@ def set_api_key(key: str) -> None:
     console.print("[green]API key saved.[/green]")
 
 
+@config.command("set-output-dir")
+@click.argument("path", type=click.Path())
+def set_output_dir(path: str) -> None:
+    """Set the default output directory for downloads."""
+    cfg = Config.load()
+    cfg.output_dir = str(Path(path).expanduser().resolve())
+    cfg.save()
+    console.print(f"[green]Output directory set to {cfg.output_dir}[/green]")
+
+
 @config.command("show")
 def show_config() -> None:
     """Display current configuration."""

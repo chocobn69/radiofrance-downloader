@@ -154,3 +154,15 @@ class TestConfigCommands:
                 result = runner.invoke(main, ["config", "set-api-key", "new-key"])
                 assert result.exit_code == 0
                 assert "saved" in result.output
+
+    def test_config_set_output_dir(self, runner, tmp_path):
+        cfg = Config()
+        with patch("radiofrance_downloader.cli.Config.load", return_value=cfg):
+            with patch.object(Config, "save") as mock_save:
+                result = runner.invoke(
+                    main, ["config", "set-output-dir", str(tmp_path)]
+                )
+                assert result.exit_code == 0
+                assert "Output directory set to" in result.output
+                mock_save.assert_called_once()
+                assert cfg.output_dir == str(tmp_path)
