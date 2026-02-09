@@ -27,11 +27,11 @@ uv run radiofrance-dl list
 ## Architecture
 
 - `src/radiofrance_downloader/` — 8 modules
-  - `api.py` — REST API client (primary data source, requires API key)
+  - `api.py` — GraphQL API client (POST to openapi.radiofrance.fr/v1/graphql, requires API key)
   - `scraper.py` — Web scraping fallback (no API key needed)
   - `rss.py` — RSS feed parser fallback
   - `downloader.py` — Streaming MP3 download engine
-  - `cli.py` — Click CLI with Rich tables/progress
+  - `cli.py` — Click CLI with Rich tables/progress (search, list, episodes, download, config set-api-key, config set-output-dir, config show)
   - `models.py` — Frozen dataclasses (Station, Show, Episode, DownloadResult)
   - `config.py` — JSON config at `~/.config/radiofrance-downloader/config.json`
   - `exceptions.py` — Exception hierarchy
@@ -39,6 +39,6 @@ uv run radiofrance-dl list
 ## Testing patterns
 
 - All HTTP is blocked by default via autouse `_block_http` fixture in `conftest.py` (uses `responses.start()/stop()/reset()`)
-- Register mocks with `responses.get(...)` directly in tests — do NOT use `@responses.activate` decorator (conflicts with autouse fixture)
+- Register mocks with `responses.post(GRAPHQL_URL, ...)` directly in tests — do NOT use `@responses.activate` decorator (conflicts with autouse fixture)
 - `Config.load()` must be patched in CLI tests to avoid filesystem reads
 - Rich `Progress` must be replaced with `_NoOpProgress` dummy in CLI download tests to avoid live refresh thread hanging in CliRunner

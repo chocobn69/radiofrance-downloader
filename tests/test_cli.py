@@ -8,7 +8,7 @@ import pytest
 import responses as rsps
 from click.testing import CliRunner
 
-from radiofrance_downloader.api import BASE_URL
+from radiofrance_downloader.api import GRAPHQL_URL
 from radiofrance_downloader.cli import main
 from radiofrance_downloader.config import Config
 from radiofrance_downloader.models import DownloadResult
@@ -72,23 +72,30 @@ class TestCLI:
         assert "France Culture" in result.output
         assert "FIP" in result.output
 
+    def test_list_station_shows(self, runner, mock_config, api_search_response):
+        rsps.post(GRAPHQL_URL, json=api_search_response, status=200)
+
+        result = runner.invoke(main, ["list", "FRANCEINTER"])
+        assert result.exit_code == 0
+        assert "France Inter" in result.output
+        assert "le-billet-de-guillaume" in result.output
+
     def test_search(self, runner, mock_config, api_search_response):
-        rsps.get(
-            f"{BASE_URL}/stations/search",
-            json=api_search_response,
-            status=200,
-        )
+        # search across all stations — one POST per station
+        for _ in range(7):  # 7 stations
+            rsps.post(GRAPHQL_URL, json=api_search_response, status=200)
 
         result = runner.invoke(main, ["search", "meurice"])
         assert result.exit_code == 0
-        assert "Guillaume Meurice" in result.output
+        assert "meurice" in result.output.lower()
 
     def test_search_no_results(self, runner, mock_config):
-        rsps.get(
-            f"{BASE_URL}/stations/search",
-            json={"data": [], "included": [], "meta": {"total": 0}},
-            status=200,
-        )
+        for _ in range(7):
+            rsps.post(
+                GRAPHQL_URL,
+                json={"data": {"shows": {"edges": []}}},
+                status=200,
+            )
 
         result = runner.invoke(main, ["search", "zzzznonexistent"])
         assert result.exit_code == 0
@@ -100,22 +107,17 @@ class TestCLI:
         assert "API key" in result.output
 
     def test_episodes(self, runner, mock_config, api_diffusions_response):
-        rsps.get(
-            f"{BASE_URL}/shows/1234/diffusions",
-            json=api_diffusions_response,
-            status=200,
-        )
+        rsps.post(GRAPHQL_URL, json=api_diffusions_response, status=200)
 
-        result = runner.invoke(main, ["episodes", "1234"])
+        result = runner.invoke(
+            main,
+            ["episodes", "/franceinter/podcasts/le-billet-de-guillaume-meurice"],
+        )
         assert result.exit_code == 0
         assert "15 janvier" in result.output
 
     def test_download_latest(self, runner, mock_config, api_diffusions_response, tmp_path):
-        rsps.get(
-            f"{BASE_URL}/shows/1234/diffusions",
-            json=api_diffusions_response,
-            status=200,
-        )
+        rsps.post(GRAPHQL_URL, json=api_diffusions_response, status=200)
 
         fake_file = tmp_path / "test.mp3"
         fake_file.write_bytes(b"fake mp3")
@@ -137,7 +139,7 @@ class TestCLI:
         ):
             result = runner.invoke(
                 main,
-                ["download", "1234", "--latest", "1", "-o", str(tmp_path)],
+                ["download", "/franceinter/podcasts/test", "--latest", "1", "-o", str(tmp_path)],
             )
         assert result.exit_code == 0
 

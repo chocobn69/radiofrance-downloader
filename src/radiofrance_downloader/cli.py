@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import click
@@ -14,6 +15,7 @@ from radiofrance_downloader.api import STATIONS, RadioFranceAPI
 from radiofrance_downloader.config import Config
 from radiofrance_downloader.downloader import EpisodeDownloader
 from radiofrance_downloader.exceptions import RadioFranceError
+from radiofrance_downloader.models import StationId
 
 console = Console()
 err_console = Console(stderr=True)
@@ -30,23 +32,37 @@ def _get_api(config: Config) -> RadioFranceAPI:
 
 @click.group()
 @click.version_option(version=__version__, prog_name="radiofrance-dl")
+@click.option("--debug", is_flag=True, help="Enable debug logging.")
 @click.pass_context
-def main(ctx: click.Context) -> None:
+def main(ctx: click.Context, debug: bool) -> None:
     """Download Radio France podcasts."""
+    if debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(name)s %(levelname)s: %(message)s",
+        )
     ctx.ensure_object(dict)
     ctx.obj["config"] = Config.load()
 
 
 @main.command()
 @click.argument("query")
+@click.option(
+    "--station",
+    type=click.Choice([s.value for s in StationId], case_sensitive=False),
+    default=None,
+    help="Filter by station.",
+)
 @click.pass_context
-def search(ctx: click.Context, query: str) -> None:
+def search(ctx: click.Context, query: str, station: str | None) -> None:
     """Search for shows by name."""
     config = ctx.obj["config"]
     api = _get_api(config)
 
+    station_id = StationId(station) if station else None
+
     try:
-        shows = api.search_shows(query)
+        shows = api.search_shows(query, station=station_id)
     except RadioFranceError as e:
         raise click.ClickException(str(e)) from e
 
@@ -55,15 +71,17 @@ def search(ctx: click.Context, query: str) -> None:
         return
 
     table = Table(title=f"Search results for '{query}'")
-    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("URL", style="cyan", no_wrap=True)
     table.add_column("Title", style="bold")
     table.add_column("Station", style="green")
     table.add_column("Description", max_width=50)
 
     for show in shows:
         station_name = show.station.name if show.station else "—"
-        desc = (show.description[:47] + "...") if len(show.description) > 50 else show.description
-        table.add_row(show.id, show.title, station_name, desc)
+        desc = show.description or ""
+        if len(desc) > 50:
+            desc = desc[:47] + "..."
+        table.add_row(show.url, show.title, station_name, desc)
 
     console.print(table)
 
@@ -85,12 +103,19 @@ def list_cmd(ctx: click.Context, station: str | None) -> None:
         console.print(table)
         return
 
-    # If station is provided, search for shows on that station
+    # If station is provided, list shows for that station
     config = ctx.obj["config"]
     api = _get_api(config)
 
     try:
-        shows = api.search_shows(station)
+        station_id = StationId(station.upper())
+    except ValueError:
+        raise click.ClickException(
+            f"Unknown station '{station}'. Run 'radiofrance-dl list' to see available stations."
+        ) from None
+
+    try:
+        shows = api.get_station_shows(station_id)
     except RadioFranceError as e:
         raise click.ClickException(str(e)) from e
 
@@ -98,29 +123,31 @@ def list_cmd(ctx: click.Context, station: str | None) -> None:
         console.print(f"[yellow]No shows found for '{station}'.[/yellow]")
         return
 
-    table = Table(title=f"Shows matching '{station}'")
-    table.add_column("ID", style="cyan", no_wrap=True)
+    table = Table(title=f"Shows for {STATIONS[station_id].name}")
+    table.add_column("URL", style="cyan", no_wrap=True)
     table.add_column("Title", style="bold")
     table.add_column("Description", max_width=60)
 
     for show in shows:
-        desc = (show.description[:57] + "...") if len(show.description) > 60 else show.description
-        table.add_row(show.id, show.title, desc)
+        desc = show.description or ""
+        if len(desc) > 60:
+            desc = desc[:57] + "..."
+        table.add_row(show.url, show.title, desc)
 
     console.print(table)
 
 
 @main.command()
-@click.argument("show_id")
-@click.option("--page", default=0, help="Page offset.")
+@click.argument("show_url")
+@click.option("--page", "after", default=None, help="Cursor for pagination.")
 @click.pass_context
-def episodes(ctx: click.Context, show_id: str, page: int) -> None:
-    """List episodes for a show."""
+def episodes(ctx: click.Context, show_url: str, after: str | None) -> None:
+    """List episodes for a show (by URL path)."""
     config = ctx.obj["config"]
     api = _get_api(config)
 
     try:
-        eps, next_page = api.get_show_episodes(show_id, page=page)
+        eps, next_cursor = api.get_show_episodes(show_url, after=after)
     except RadioFranceError as e:
         raise click.ClickException(str(e)) from e
 
@@ -128,7 +155,7 @@ def episodes(ctx: click.Context, show_id: str, page: int) -> None:
         console.print("[yellow]No episodes found.[/yellow]")
         return
 
-    table = Table(title=f"Episodes for show {show_id}")
+    table = Table(title=f"Episodes for {show_url}")
     table.add_column("ID", style="cyan", no_wrap=True)
     table.add_column("Title", style="bold")
     table.add_column("Date", style="green")
@@ -141,31 +168,31 @@ def episodes(ctx: click.Context, show_id: str, page: int) -> None:
 
     console.print(table)
 
-    if next_page is not None:
-        console.print(f"\n[dim]Next page: --page {next_page}[/dim]")
+    if next_cursor is not None:
+        console.print(f"\n[dim]Next page: --page {next_cursor}[/dim]")
 
 
 @main.command()
-@click.argument("show_id")
+@click.argument("show_url")
 @click.option("--latest", "latest_n", type=int, default=None, help="Download latest N episodes.")
 @click.option("--all", "fetch_all", is_flag=True, help="Download all available episodes.")
 @click.option("-o", "--output", "output_dir", type=click.Path(), default=None, help="Output dir.")
 @click.pass_context
 def download(
     ctx: click.Context,
-    show_id: str,
+    show_url: str,
     latest_n: int | None,
     fetch_all: bool,
     output_dir: str | None,
 ) -> None:
-    """Download episodes for a show."""
+    """Download episodes for a show (by URL path)."""
     config = ctx.obj["config"]
     api = _get_api(config)
 
     out = Path(output_dir) if output_dir else Path(config.output_dir)
 
     try:
-        eps, _ = api.get_show_episodes(show_id, fetch_all=fetch_all)
+        eps, _ = api.get_show_episodes(show_url, fetch_all=fetch_all)
     except RadioFranceError as e:
         raise click.ClickException(str(e)) from e
 

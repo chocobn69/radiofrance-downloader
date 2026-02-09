@@ -12,11 +12,11 @@ from radiofrance_downloader.models import (
 
 class TestStationId:
     def test_values(self):
-        assert StationId.FRANCE_INTER == "1"
-        assert StationId.FRANCE_CULTURE == "4"
+        assert StationId.FRANCE_INTER == "FRANCEINTER"
+        assert StationId.FRANCE_CULTURE == "FRANCECULTURE"
 
     def test_str(self):
-        assert str(StationId.FRANCE_INTER) == "1"
+        assert str(StationId.FRANCE_INTER) == "FRANCEINTER"
 
 
 class TestStation:

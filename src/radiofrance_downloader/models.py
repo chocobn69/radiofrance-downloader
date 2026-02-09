@@ -9,15 +9,15 @@ from pathlib import Path
 
 
 class StationId(StrEnum):
-    """Radio France station identifiers."""
+    """Radio France station/brand identifiers (GraphQL API)."""
 
-    FRANCE_INTER = "1"
-    FRANCE_INFO = "2"
-    FRANCE_CULTURE = "4"
-    FRANCE_MUSIQUE = "5"
-    FIP = "7"
-    MOUV = "6"
-    FRANCE_BLEU = "3"
+    FRANCE_INTER = "FRANCEINTER"
+    FRANCE_INFO = "FRANCEINFO"
+    FRANCE_CULTURE = "FRANCECULTURE"
+    FRANCE_MUSIQUE = "FRANCEMUSIQUE"
+    FIP = "FIP"
+    MOUV = "MOUV"
+    FRANCE_BLEU = "FRANCEBLEU"
 
 
 @dataclass(frozen=True)

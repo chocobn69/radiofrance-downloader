@@ -1,7 +1,8 @@
-"""Radio France REST API client."""
+"""Radio France GraphQL API client."""
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 import requests
@@ -13,7 +14,9 @@ from radiofrance_downloader.exceptions import (
 )
 from radiofrance_downloader.models import Episode, Show, Station, StationId
 
-BASE_URL = "https://api.radiofrance.fr/v1"
+logger = logging.getLogger(__name__)
+
+GRAPHQL_URL = "https://openapi.radiofrance.fr/v1/graphql"
 
 STATIONS: dict[StationId, Station] = {
     StationId.FRANCE_INTER: Station(
@@ -53,9 +56,20 @@ STATIONS: dict[StationId, Station] = {
     ),
 }
 
+# Map from URL slug to StationId for reverse lookup
+_SLUG_TO_STATION: dict[str, StationId] = {
+    "franceinter": StationId.FRANCE_INTER,
+    "franceinfo": StationId.FRANCE_INFO,
+    "francebleu": StationId.FRANCE_BLEU,
+    "franceculture": StationId.FRANCE_CULTURE,
+    "francemusique": StationId.FRANCE_MUSIQUE,
+    "mouv": StationId.MOUV,
+    "fip": StationId.FIP,
+}
+
 
 class RadioFranceAPI:
-    """Client for the Radio France REST API."""
+    """Client for the Radio France GraphQL API."""
 
     def __init__(self, api_key: str):
         self.api_key = api_key
@@ -63,173 +77,276 @@ class RadioFranceAPI:
         self.session.headers.update(
             {
                 "x-token": api_key,
-                "Accept": "application/x.radiofrance.mobileapi+json",
+                "Content-Type": "application/json",
             }
         )
 
-    def _get(self, path: str, params: dict | None = None) -> dict:
-        """Make an authenticated GET request."""
-        url = f"{BASE_URL}{path}"
+    def _query(self, query: str, variables: dict | None = None) -> dict:
+        """Execute a GraphQL query."""
+        payload: dict = {"query": query}
+        if variables:
+            payload["variables"] = variables
+
+        logger.debug("GraphQL POST %s", GRAPHQL_URL)
+        logger.debug("Query: %s", query.strip()[:200])
+        logger.debug("Variables: %s", variables)
+
         try:
-            resp = self.session.get(url, params=params, timeout=30)
+            resp = self.session.post(GRAPHQL_URL, json=payload, timeout=30)
         except requests.RequestException as e:
             raise APIError(f"Request failed: {e}") from e
 
+        logger.debug("Response %s: %s", resp.status_code, resp.text[:500])
+
         if resp.status_code == 401:
-            raise AuthenticationError()
-        if resp.status_code == 404:
-            raise ShowNotFoundError(f"Not found: {path}")
-        if resp.status_code >= 400:
-            raise APIError(f"API error {resp.status_code}: {resp.text}", resp.status_code)
-
-        return resp.json()
-
-    def search_shows(self, query: str) -> list[Show]:
-        """Search for shows by name."""
-        data = self._get("/stations/search", params={"value": query, "include": "show"})
-        return self._parse_shows(data)
-
-    def get_show_episodes(
-        self,
-        show_id: str,
-        page: int = 0,
-        fetch_all: bool = False,
-    ) -> tuple[list[Episode], int | None]:
-        """Get episodes for a show. Returns (episodes, next_page)."""
-        all_episodes: list[Episode] = []
-        current_page = page
-
-        while True:
-            params: dict = {
-                "filter[manifestations][exists]": "true",
-                "include": "show,manifestations",
-                "page[offset]": str(current_page),
-            }
-            data = self._get(f"/shows/{show_id}/diffusions", params=params)
-            episodes, next_page = self._parse_episodes(data)
-            all_episodes.extend(episodes)
-
-            if not fetch_all or next_page is None:
-                return all_episodes, next_page
-
-            current_page = next_page
-
-    def get_show_details(self, show_id: str) -> Show:
-        """Get details for a single show."""
-        data = self._get(f"/shows/{show_id}")
-        attrs = data.get("data", {}).get("attributes", {})
-        station_data = (
-            data.get("data", {}).get("relationships", {}).get("station", {}).get("data", {})
-        )
-        station = STATIONS.get(StationId(station_data["id"])) if station_data.get("id") else None
-
-        path = attrs.get("path", "")
-        url = f"https://www.radiofrance.fr{path}" if path else ""
-
-        return Show(
-            id=show_id,
-            title=attrs.get("title", ""),
-            description=attrs.get("description", ""),
-            url=url,
-            station=station,
-            image_url=attrs.get("visual", {}).get("src", ""),
-        )
-
-    def _parse_shows(self, data: dict) -> list[Show]:
-        """Parse show list from API response."""
-        shows = []
-        for item in data.get("data", []):
-            if item.get("type") != "shows":
-                continue
-            attrs = item.get("attributes", {})
-            station_ref = (
-                item.get("relationships", {}).get("station", {}).get("data", {}).get("id")
+            raise AuthenticationError(
+                f"Authentication failed (HTTP {resp.status_code}): "
+                f"{resp.text[:200]}"
             )
-            station = None
-            if station_ref:
-                try:
-                    station = STATIONS.get(StationId(station_ref))
-                except ValueError:
-                    pass
+        if resp.status_code >= 400:
+            raise APIError(
+                f"API error {resp.status_code}: {resp.text}",
+                resp.status_code,
+            )
 
-            path = attrs.get("path", "")
-            url = f"https://www.radiofrance.fr{path}" if path else ""
+        data = resp.json()
+
+        # GraphQL can return errors even with 200 status
+        if "errors" in data:
+            errors = data["errors"]
+            msg = (
+                errors[0].get("message", str(errors))
+                if errors else str(errors)
+            )
+            if "not found" in msg.lower():
+                raise ShowNotFoundError(msg)
+            raise APIError(f"GraphQL error: {msg}")
+
+        return data.get("data", {})
+
+    def search_shows(
+        self, query: str, station: StationId | None = None,
+    ) -> list[Show]:
+        """Search for shows, optionally filtered by station.
+
+        The GraphQL API has no text search — we list shows per station
+        and filter client-side.
+        """
+        q = query.lower()
+        stations = [station] if station else list(STATIONS)
+
+        all_shows: list[Show] = []
+        for station_id in stations:
+            try:
+                shows = self.get_all_station_shows(station_id)
+                for show in shows:
+                    title = show.title.lower()
+                    desc = (show.description or "").lower()
+                    if q in title or q in desc:
+                        all_shows.append(show)
+            except APIError:
+                continue
+        return all_shows
+
+    def get_all_station_shows(
+        self,
+        station: StationId,
+    ) -> list[Show]:
+        """Get all shows for a station, paginating automatically."""
+        all_shows: list[Show] = []
+        after: str | None = None
+        while True:
+            shows, last_cursor = self._fetch_station_shows_page(
+                station, first=100, after=after,
+            )
+            all_shows.extend(shows)
+            if not last_cursor or len(shows) < 100:
+                break
+            after = last_cursor
+        return all_shows
+
+    def get_station_shows(
+        self,
+        station: StationId,
+        first: int = 100,
+        after: str | None = None,
+    ) -> list[Show]:
+        """Get one page of shows for a station."""
+        shows, _ = self._fetch_station_shows_page(
+            station, first=first, after=after,
+        )
+        return shows
+
+    def _fetch_station_shows_page(
+        self,
+        station: StationId,
+        first: int = 100,
+        after: str | None = None,
+    ) -> tuple[list[Show], str | None]:
+        """Fetch a single page of shows. Returns (shows, last_cursor)."""
+        gql = """
+        query GetShows($station: StationsEnum!, $first: Int!, $after: String) {
+            shows(station: $station, first: $first, after: $after) {
+                edges {
+                    cursor
+                    node {
+                        id
+                        title
+                        url
+                        standFirst
+                    }
+                }
+            }
+        }
+        """
+        variables: dict = {"station": station.value, "first": first}
+        if after:
+            variables["after"] = after
+
+        data = self._query(gql, variables)
+        shows_data = data.get("shows", {})
+        edges = shows_data.get("edges", [])
+
+        shows = []
+        last_cursor = None
+        for edge in edges:
+            node = edge.get("node", {})
+            last_cursor = edge.get("cursor")
+            station_obj = STATIONS.get(station)
 
             shows.append(
                 Show(
-                    id=item["id"],
-                    title=attrs.get("title", ""),
-                    description=attrs.get("description", ""),
-                    url=url,
-                    station=station,
-                    image_url=attrs.get("visual", {}).get("src", ""),
+                    id=node.get("id", ""),
+                    title=node.get("title", ""),
+                    description=node.get("standFirst", ""),
+                    url=node.get("url", ""),
+                    station=station_obj,
                 )
             )
-        return shows
+        return shows, last_cursor
 
-    def _parse_episodes(self, data: dict) -> tuple[list[Episode], int | None]:
-        """Parse episode list from API response with manifestations."""
-        # Build lookup for included resources
-        included_by_type: dict[str, dict[str, dict]] = {}
-        for item in data.get("included", []):
-            included_by_type.setdefault(item["type"], {})[item["id"]] = item
+    def get_show_episodes(
+        self,
+        show_url: str,
+        first: int = 20,
+        after: str | None = None,
+        fetch_all: bool = False,
+    ) -> tuple[list[Episode], str | None]:
+        """Get episodes for a show by its URL.
 
-        manifestations = included_by_type.get("manifestations", {})
-        shows = included_by_type.get("shows", {})
+        Returns (episodes, next_cursor).
+        """
+        gql = """
+        query GetDiffusions($url: String!, $first: Int!, $after: String) {
+            diffusionsOfShowByUrl(url: $url, first: $first, after: $after) {
+                edges {
+                    cursor
+                    node {
+                        id
+                        title
+                        standFirst
+                        published_date
+                        url
+                        podcastEpisode {
+                            url
+                            duration
+                        }
+                        show {
+                            id
+                            title
+                        }
+                    }
+                }
+            }
+        }
+        """
+        all_episodes: list[Episode] = []
+        current_after = after
 
-        episodes = []
-        for item in data.get("data", []):
-            attrs = item.get("attributes", {})
-            rels = item.get("relationships", {})
+        while True:
+            variables: dict = {"url": show_url, "first": first}
+            if current_after:
+                variables["after"] = current_after
 
-            # Get show info
-            show_ref = rels.get("show", {}).get("data", {})
-            show_id = show_ref.get("id", "")
-            show_data = shows.get(show_id, {})
-            show_title = show_data.get("attributes", {}).get("title", "")
+            data = self._query(gql, variables)
+            diffusions = data.get("diffusionsOfShowByUrl", {})
+            edges = diffusions.get("edges", [])
 
-            # Get manifestation (audio file)
-            manif_refs = rels.get("manifestations", {}).get("data", [])
-            audio_url = ""
-            duration = 0
-            if manif_refs:
-                manif = manifestations.get(manif_refs[0].get("id", ""), {})
-                manif_attrs = manif.get("attributes", {})
-                audio_url = manif_attrs.get("url", "")
-                duration = manif_attrs.get("duration", 0)
+            if not edges:
+                return all_episodes, None
 
-            # Parse published date
-            published_at = None
-            ts = attrs.get("publishedDate")
-            if ts:
-                published_at = datetime.fromtimestamp(ts, tz=UTC)
+            next_cursor = None
+            for edge in edges:
+                node = edge.get("node", {})
+                next_cursor = edge.get("cursor")
 
-            path = attrs.get("path", "")
-            page_url = f"https://www.radiofrance.fr{path}" if path else ""
+                show_data = node.get("show") or {}
+                podcast = node.get("podcastEpisode") or {}
 
-            episodes.append(
-                Episode(
-                    id=item["id"],
-                    title=attrs.get("title", ""),
-                    description=attrs.get("standFirst", ""),
-                    show_id=show_id,
-                    show_title=show_title,
-                    published_at=published_at,
-                    duration=duration,
-                    audio_url=audio_url,
-                    page_url=page_url,
+                # published_date is a String timestamp from the API
+                published_at = None
+                ts = node.get("published_date")
+                if ts:
+                    published_at = datetime.fromtimestamp(
+                        int(ts), tz=UTC,
+                    )
+
+                all_episodes.append(
+                    Episode(
+                        id=node.get("id", ""),
+                        title=node.get("title", ""),
+                        description=node.get("standFirst", ""),
+                        show_id=show_data.get("id", ""),
+                        show_title=show_data.get("title", ""),
+                        published_at=published_at,
+                        duration=podcast.get("duration", 0) or 0,
+                        audio_url=podcast.get("url", ""),
+                        page_url=node.get("url", ""),
+                    )
                 )
-            )
 
-        # Determine next page
-        next_page = None
-        next_link = data.get("links", {}).get("next")
-        if next_link:
-            # Extract offset from next link
-            import re
+            if not fetch_all or not next_cursor:
+                return all_episodes, next_cursor
 
-            match = re.search(r"page\[offset\]=(\d+)", next_link)
-            if match:
-                next_page = int(match.group(1))
+            current_after = next_cursor
 
-        return episodes, next_page
+    def get_show_details(self, show_url: str) -> Show:
+        """Get details for a show by its URL."""
+        gql = """
+        query GetShow($url: String!) {
+            showByUrl(url: $url) {
+                id
+                title
+                standFirst
+                url
+                podcast {
+                    rss
+                    itunes
+                }
+            }
+        }
+        """
+        data = self._query(gql, {"url": show_url})
+        show_data = data.get("showByUrl")
+
+        if not show_data:
+            raise ShowNotFoundError(f"Show not found: {show_url}")
+
+        show_full_url = show_data.get("url", "")
+        station = self._station_from_url(show_full_url)
+
+        return Show(
+            id=show_data.get("id", ""),
+            title=show_data.get("title", ""),
+            description=show_data.get("standFirst", ""),
+            url=show_full_url,
+            station=station,
+        )
+
+    @staticmethod
+    def _station_from_url(url: str) -> Station | None:
+        """Try to determine the station from a show URL."""
+        for slug, station_id in _SLUG_TO_STATION.items():
+            if f"/{slug}/" in url or url.endswith(f"/{slug}"):
+                return STATIONS.get(station_id)
+        return None

@@ -38,42 +38,58 @@ The key is stored in `~/.config/radiofrance-downloader/config.json`.
 radiofrance-dl list
 ```
 
+### List shows for a station
+
+```bash
+radiofrance-dl list FRANCEINTER
+radiofrance-dl list FRANCECULTURE
+```
+
 ### Search for shows
 
 ```bash
-radiofrance-dl search "tina"
 radiofrance-dl search "terre au carré"
+radiofrance-dl search "jeu des 1000" --station FRANCEINTER
 ```
 
 ### List episodes
 
 ```bash
-radiofrance-dl episodes SHOW_ID
-radiofrance-dl episodes SHOW_ID --page 2
+radiofrance-dl episodes SHOW_URL
+radiofrance-dl episodes "https://www.franceinter.fr/franceinter/podcasts/la-terre-au-carre"
 ```
 
 ### Download episodes
 
 ```bash
+SHOW_URL="https://www.franceinter.fr/franceinter/podcasts/la-terre-au-carre"
+
 # Download the latest episode
-radiofrance-dl download SHOW_ID --latest 1
+radiofrance-dl download "$SHOW_URL" --latest 1
 
 # Download the 5 latest episodes
-radiofrance-dl download SHOW_ID --latest 5
+radiofrance-dl download "$SHOW_URL" --latest 5
 
 # Download all episodes
-radiofrance-dl download SHOW_ID --all
+radiofrance-dl download "$SHOW_URL" --all
 
 # Specify output directory
-radiofrance-dl download SHOW_ID --latest 3 -o ~/my-podcasts
+radiofrance-dl download "$SHOW_URL" --latest 3 -o ~/my-podcasts
 ```
 
 Files are saved to `~/Podcasts/RadioFrance/<show-name>/` by default. Already downloaded episodes are skipped.
 
-### View configuration
+### Configure
 
 ```bash
+# View current configuration
 radiofrance-dl config show
+
+# Set API key
+radiofrance-dl config set-api-key YOUR_API_KEY
+
+# Set default output directory
+radiofrance-dl config set-output-dir ~/my-podcasts
 ```
 
 ## Development
