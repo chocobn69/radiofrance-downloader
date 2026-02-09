@@ -112,4 +112,4 @@ This tool was built using AI-assisted "vibe coding" with [Claude Code](https://c
 
 ## License
 
-MIT
+GNU v3
