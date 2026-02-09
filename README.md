@@ -106,6 +106,10 @@ uv run pytest tests/ -v
 uv run ruff check src/ tests/
 ```
 
+## Disclaimer
+
+This tool was built using AI-assisted "vibe coding" with [Claude Code](https://claude.ai/claude-code). The code, tests, and documentation were generated through conversational prompts and iterative refinement with Claude (Anthropic).
+
 ## License
 
 MIT
